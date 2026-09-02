@@ -1,19 +1,36 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ProductsService } from '../products/products.service';
 import { initialData } from './data/seed-data';
+import { InjectRepository } from '@nestjs/typeorm';
+import { User } from '../auth/entities/user.entity';
+import { Product } from '../products/entities';
+import { Repository } from 'typeorm';
 
 @Injectable()
 export class SeedService {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    @InjectRepository(User) private readonly userRepository: Repository<User>,
+  ) {}
 
   async runSeed() {
-    const result: boolean = await this.removeAllProducts();
+    let result: boolean = await this.removeAllProducts();
 
     if (result) {
-      await this.insertSeed();
+      result = await this.deleteUsers();
+      if (result) {
+        const adminUser = await this.insertUsers();
+        await this.insertSeed(adminUser);
+      }
     }
 
     return `Seed executed successfully.`;
+  }
+
+  private async deleteUsers() {
+    const queryBuilder = this.userRepository.createQueryBuilder();
+    await queryBuilder.delete().where({}).execute();
+    return true;
   }
 
   private async removeAllProducts() {
@@ -21,20 +38,29 @@ export class SeedService {
     return true;
   }
 
-  private async insertSeed() {
+  private async insertSeed(user: User) {
     const products = initialData.products;
-    const promises = [];
+    const promises: Promise<Product>[] = [];
 
-    products.forEach((product) => {
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-expect-error
-      promises.push(this.productsService.create(product));
-    });
+    products.forEach((product) =>
+      promises.push(this.productsService.create(product, user)),
+    );
 
-    // eslint-disable-next-line @typescript-eslint/await-thenable
     await Promise.all(promises).catch((error) => {
       console.error(error);
       throw new InternalServerErrorException('Error while creating seed data');
     });
+  }
+
+  private async insertUsers() {
+    const seedUsers = initialData.users;
+    const users: User[] = [];
+
+    seedUsers.forEach((user) => {
+      users.push(this.userRepository.create(user));
+    });
+
+    const dbUsers = await this.userRepository.save(users);
+    return dbUsers[0];
   }
 }

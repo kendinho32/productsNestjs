@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  InternalServerErrorException,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -12,12 +6,12 @@ import { DataSource, Repository, SelectQueryBuilder } from 'typeorm';
 import { Product, ProductImage } from './entities';
 import { PaginationDto } from '../common/dtos/pagination.dto';
 import { isUUID } from 'class-validator';
+import { CommonService } from '../common/common.service';
+import { User } from '../auth/entities/user.entity';
 
 @Injectable()
 export class ProductsService {
   private readonly NAME_SERVICE: string = 'ProductsService';
-  private readonly ERROR_23505: string = '23505';
-  private readonly log: Logger = new Logger(this.NAME_SERVICE);
 
   constructor(
     @InjectRepository(Product)
@@ -25,20 +19,25 @@ export class ProductsService {
     @InjectRepository(ProductImage)
     private readonly productImageRepository: Repository<ProductImage>,
     private readonly dataSource: DataSource,
+    private readonly commonService: CommonService,
   ) {}
 
-  async create(createProductDto: CreateProductDto): Promise<Product> {
+  async create(
+    createProductDto: CreateProductDto,
+    user: User,
+  ): Promise<Product> {
     const { images = [], ...productDetails } = createProductDto;
 
     const product = this.productRepository.create({
       ...productDetails,
+      user,
       images: images.map((image) =>
         this.productImageRepository.create({ url: image }),
       ),
     });
     await this.productRepository.save(product).catch((err) => {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      this.handlerException(err);
+      this.commonService.handlerException(err);
     });
 
     return product;
@@ -91,10 +90,11 @@ export class ProductsService {
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
+    user: User,
   ): Promise<Product> {
     const { images, ...toUpdate } = updateProductDto;
 
-    let product = await this.productRepository.preload({
+    const product = await this.productRepository.preload({
       id: id,
       ...toUpdate,
     });
@@ -103,7 +103,6 @@ export class ProductsService {
       throw new NotFoundException(`Product not found with id: ${id} `);
     }
 
-    // create QueryRunner (transactions)
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
@@ -115,16 +114,15 @@ export class ProductsService {
           this.productImageRepository.create({ url: image }),
         );
       }
+      product.user = user;
       await queryRunner.manager.save(product);
       await queryRunner.commitTransaction();
-      await queryRunner.release();
-
-      product = await this.findOne(id);
     } catch (error) {
       await queryRunner.rollbackTransaction();
-      await queryRunner.release();
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      this.handlerException(error);
+      this.commonService.handlerException(error);
+    } finally {
+      await queryRunner.release();
     }
     return product;
   }
@@ -146,23 +144,7 @@ export class ProductsService {
        */
     } catch (error) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      this.handlerException(error);
+      this.commonService.handlerException(error);
     }
-  }
-
-  /**
-   * Method for check Exception globals
-   * @param err specification the error received
-   * @private
-   */
-  private handlerException(err: { code: string; detail: any }) {
-    if (err.code === this.ERROR_23505) {
-      throw new BadRequestException(err.detail);
-    }
-
-    this.log.error(err);
-    throw new InternalServerErrorException(
-      'Unexpected error, check server logs',
-    );
   }
 }
