@@ -43,7 +43,11 @@ DB_HOST=localhost
 DB_PORT=5432
 DB_USERNAME=postgres
 PORT=3000
+JWT_SECRET=tu_secreto_jwt_super_seguro_aqui
+HOST_API=http://localhost:3000
 ```
+
+**Nota:** Las variables `JWT_SECRET` y `HOST_API` son requeridas para la autenticación y para construir las URLs de las imágenes cargadas.
 
 ### 4. Levantar la base de datos en Docker
 El proyecto contiene un archivo `docker-compose.yaml` preconfigurado. Ejecuta el siguiente comando para descargar la imagen de PostgreSQL e iniciar el contenedor de base de datos en segundo plano:
@@ -77,11 +81,78 @@ Comandos útiles de Docker:
 
 ---
 
+## 🔐 Autenticación (JWT)
+
+Esta API utiliza **JSON Web Tokens (JWT)** para proteger los endpoints que requieren autenticación.
+
+### Flujo de Autenticación:
+
+1. **Registrar un usuario:** `POST /api/auth/register`
+   ```json
+   {
+     "email": "usuario@example.com",
+     "password": "contraseña_segura_123",
+     "full_name": "Nombre Completo"
+   }
+   ```
+   Retorna un token JWT en la respuesta.
+
+2. **Login:** `POST /api/auth/login`
+   ```json
+   {
+     "email": "usuario@example.com",
+     "password": "contraseña_segura_123"
+   }
+   ```
+   Retorna un token JWT válido por varias horas.
+
+3. **Usar el token:** Incluye el token en el header `Authorization`:
+   ```
+   Authorization: Bearer <token_jwt_aqui>
+   ```
+
+### Endpoints Protegidos:
+- `POST /api/products` - Crear productos (requiere autenticación)
+- `PATCH /api/products/:id` - Actualizar productos (requiere autenticación)
+- `DELETE /api/products/:id` - Eliminar productos (requiere autenticación)
+
+---
+
+## 📸 Carga de Imágenes
+
+La API permite cargar imágenes de productos en formato JPG, PNG o GIF (máximo 10 MB).
+
+### Endpoint de Carga:
+**POST** `/api/files/product`
+- **Multipart Form Data:** Campo `file` con la imagen
+- **Respuesta:** Retorna la URL segura de la imagen para usar en productos
+
+### Ejemplo:
+```bash
+curl -X POST http://localhost:3000/api/files/product \
+  -F "file=@/ruta/a/imagen.jpg"
+```
+
+Respuesta:
+```json
+{
+  "secureUrl": "http://localhost:3000/static/products/uuid-v7-filename.jpg",
+  "mimetype": "image/jpeg",
+  "size": 102400
+}
+```
+
+### Recuperar Imágenes:
+**GET** `/api/files/product/:name`
+- Descarga la imagen del servidor
+
+---
+
 ## 📝 Documentación Online Interactiva (Swagger)
 
 Esta API cuenta con documentación automatizada detallada mediante **Swagger UI**. En ella se pueden inspeccionar las rutas, los códigos de respuesta, las especificaciones de seguridad y probar los endpoints interactivamente desde el navegador.
 
-- **Ruta de acceso:** `http://localhost:3000/api` (o la ruta `/api` en el puerto que hayas configurado en el archivo `.env`).
+- **Ruta de acceso:** `[Swagger](http://localhost:3000/api/doc)` (o la ruta `/api` en el puerto que hayas configurado en el archivo `.env`).
 
 ---
 
@@ -89,10 +160,45 @@ Esta API cuenta con documentación automatizada detallada mediante **Swagger UI*
 
 A continuación se detallan las rutas disponibles y sus respectivos comportamientos. Todos los endpoints usan el prefijo global `/api`.
 
-### 1. Módulo de Semilla (Seed)
+### 1. Módulo de Autenticación (Auth)
+
+#### `POST /api/auth/register`
+- **Descripción:** Registra un nuevo usuario en el sistema.
+- **DTO de Entrada:** Credenciales del usuario (email, password, full_name).
+- **Respuestas:**
+  - `201 Created`: Usuario registrado exitosamente. Retorna token JWT y datos del usuario.
+  - `400 Bad Request`: Email ya existe o datos de entrada inválidos.
+
+#### `POST /api/auth/login`
+- **Descripción:** Inicia sesión con un usuario registrado.
+- **DTO de Entrada:** Email y contraseña.
+- **Respuestas:**
+  - `200 OK`: Login exitoso. Retorna token JWT y datos del usuario.
+  - `401 Unauthorized`: Credenciales inválidas.
+
+---
+
+### 2. Módulo de Archivos (Files)
+
+#### `POST /api/files/product`
+- **Descripción:** Carga una imagen de producto al servidor.
+- **Entrada:** Multipart Form Data con campo `file` (JPG, PNG o GIF, máximo 10 MB).
+- **Respuestas:**
+  - `201 Created`: Imagen cargada exitosamente. Retorna URL segura para usar en productos.
+  - `400 Bad Request`: Archivo inválido o tamaño excedido.
+
+#### `GET /api/files/product/:name`
+- **Descripción:** Descarga una imagen de producto almacenada en el servidor.
+- **Respuestas:**
+  - `200 OK`: Archivo descargado exitosamente.
+  - `404 Not Found`: Archivo no encontrado.
+
+---
+
+### 3. Módulo de Semilla (Seed)
 
 #### `GET /api/seed`
-- **Descripción:** Limpia por completo la base de datos de productos e imágenes e inserta un lote de datos de prueba preestablecido.
+- **Descripción:** Limpia por completo la base de datos de productos, usuarios e imágenes e inserta un lote de datos de prueba preestablecido (requiere un usuario admin).
 - **Respuestas:**
   - `200 OK`: Semilla ejecutada correctamente.
   - `500 Internal Server Error`: Ocurrió un error inesperado al insertar la semilla.

@@ -4,11 +4,13 @@ import {
   BeforeUpdate,
   Column,
   Entity,
+  ManyToOne,
   OneToMany,
   PrimaryColumn,
 } from 'typeorm';
 import { v7 as uuid } from 'uuid';
 import { ProductImage } from './product-image.entity';
+import { User } from '../../auth/entities/user.entity';
 
 @Entity('products')
 export class Product {
@@ -95,6 +97,17 @@ export class Product {
     { cascade: true, eager: true },
   )
   images?: ProductImage[];
+
+  @ApiProperty({
+    description: 'Relation with user',
+    type: [User],
+    required: false,
+  })
+  @ManyToOne(() => User, (user) => user.products, {
+    nullable: false,
+    onDelete: 'CASCADE',
+  })
+  user: User;
 
   @BeforeInsert()
   runBeforeInsert() {

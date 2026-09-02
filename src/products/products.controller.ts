@@ -15,6 +15,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Product } from './entities';
 import { PaginationDto } from '../common/dtos/pagination.dto';
+import { Auth, GetUserDecorator } from '../auth/decorators';
+import { User } from '../auth/entities/user.entity';
 
 @ApiTags('Products')
 @Controller('products')
@@ -22,6 +24,7 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Post()
+  @Auth()
   @ApiOperation({ summary: 'Create a new product' })
   @ApiResponse({
     status: 201,
@@ -32,8 +35,11 @@ export class ProductsController {
     status: 400,
     description: 'Bad Request (validation error, unique constraint violation)',
   })
-  create(@Body() createProductDto: CreateProductDto): Promise<Product> {
-    return this.productsService.create(createProductDto);
+  create(
+    @Body() createProductDto: CreateProductDto,
+    @GetUserDecorator() user: User,
+  ): Promise<Product> {
+    return this.productsService.create(createProductDto, user);
   }
 
   @Get()
@@ -76,8 +82,9 @@ export class ProductsController {
   update(
     @Param('id', new ParseUUIDPipe({ version: '7' })) id: string,
     @Body() updateProductDto: UpdateProductDto,
+    @GetUserDecorator() user: User,
   ) {
-    return this.productsService.update(id, updateProductDto);
+    return this.productsService.update(id, updateProductDto, user);
   }
 
   @Delete(':id')
